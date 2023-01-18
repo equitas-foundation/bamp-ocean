@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -43,6 +44,11 @@ type Account struct {
 
 func (a *Account) IsMultiSig() bool {
 	return len(a.Info.Xpubs) > 1
+}
+
+func (a *Account) Id() string {
+	id := sha256.Sum256([]byte(a.Info.Descriptor()))
+	return hex.EncodeToString(id[:])
 }
 
 func (a *Account) incrementExternalIndex() (next uint) {

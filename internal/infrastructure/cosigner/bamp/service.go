@@ -77,9 +77,10 @@ func (s *service) RegisterMultiSig(
 	return err
 }
 
-func (s *service) SignTx(ctx context.Context, tx string) (string, error) {
+func (s *service) SignTx(ctx context.Context, tx, walletId string) (string, error) {
 	resp, err := s.client.SignTransaction(ctx, &pb.SignTransactionRequest{
-		Tx: tx,
+		Tx:       tx,
+		WalletId: walletId,
 	},
 	)
 	if err != nil {

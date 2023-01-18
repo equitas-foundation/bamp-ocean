@@ -159,9 +159,9 @@ func (m *mockCosigner) RegisterMultiSig(
 }
 
 func (m *mockCosigner) SignTx(
-	ctx context.Context, tx string,
+	ctx context.Context, tx, walletId string,
 ) (string, error) {
-	args := m.Called(ctx, tx)
+	args := m.Called(ctx, tx, walletId)
 	var res string
 	if a := args.Get(0); a != nil {
 		res = a.(string)
