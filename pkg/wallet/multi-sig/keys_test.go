@@ -2,6 +2,7 @@ package multisig_test
 
 import (
 	"encoding/hex"
+	"sort"
 	"testing"
 
 	wallet "github.com/equitas-foundation/bamp-ocean/pkg/wallet/multi-sig"
@@ -50,6 +51,11 @@ func TestDeriveSigningKeyPair(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, prvkey)
 		require.NotEmpty(t, pubkeys)
+		require.True(t, sort.SliceIsSorted(pubkeys, func(i, j int) bool {
+			pk1 := hex.EncodeToString(pubkeys[i].SerializeCompressed())
+			pk2 := hex.EncodeToString(pubkeys[j].SerializeCompressed())
+			return pk1 < pk2
+		}))
 	})
 
 	t.Run("invalid", func(t *testing.T) {

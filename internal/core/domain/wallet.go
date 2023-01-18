@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/btcsuite/btcd/btcutil"
@@ -304,9 +303,6 @@ func (w *Wallet) CreateMSAccount(
 		bdayBlock = birthdayBlock
 	}
 	xpubs := []string{cosignerXpub, xpub}
-	sort.SliceStable(xpubs, func(i, j int) bool {
-		return xpubs[i] < xpubs[j]
-	})
 	accountInfo := AccountInfo{
 		accountKey, xpubs, derivationPath.String(),
 	}

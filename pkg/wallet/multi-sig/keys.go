@@ -98,10 +98,6 @@ func (w *Wallet) DeriveSigningKeyPair(args DeriveSigningKeyPairArgs) (
 		}
 	}
 
-	sort.SliceStable(xpubs, func(i, j int) bool {
-		return xpubs[i] < xpubs[j]
-	})
-
 	pubKeys := make([]*btcec.PublicKey, 0, len(xpubs))
 	for _, xpub := range xpubs {
 		hdNode, _ := hdkeychain.NewKeyFromString(xpub)
@@ -117,6 +113,11 @@ func (w *Wallet) DeriveSigningKeyPair(args DeriveSigningKeyPairArgs) (
 		}
 		pubKeys = append(pubKeys, pubKey)
 	}
+	sort.SliceStable(pubKeys, func(i, j int) bool {
+		pk1 := hex.EncodeToString(pubKeys[i].SerializeCompressed())
+		pk2 := hex.EncodeToString(pubKeys[j].SerializeCompressed())
+		return pk1 < pk2
+	})
 
 	return privateKey, pubKeys, nil
 }
