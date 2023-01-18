@@ -209,7 +209,7 @@ func (ts *TransactionService) SignTransaction(
 			if err != nil {
 				return "", err
 			}
-			tx, err = ts.cosigner.SignTx(ctx, tx)
+			tx, err = ts.cosigner.SignTx(ctx, tx, a.account.Id())
 			if err != nil {
 				return "", err
 			}
@@ -411,7 +411,7 @@ func (ts *TransactionService) SignPset(
 				return "", err
 			}
 
-			tx, err = ts.cosigner.SignTx(ctx, tx)
+			tx, err = ts.cosigner.SignTx(ctx, tx, a.account.Id())
 			if err != nil {
 				return "", err
 			}
@@ -681,7 +681,7 @@ func (ts *TransactionService) Transfer(
 		if err != nil {
 			return "", err
 		}
-		signedPtx, err = ts.cosigner.SignTx(ctx, signedPtx)
+		signedPtx, err = ts.cosigner.SignTx(ctx, signedPtx, account.Id())
 		if err != nil {
 			return "", err
 		}
