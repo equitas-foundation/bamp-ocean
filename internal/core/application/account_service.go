@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/equitas-foundation/bamp-ocean/internal/core/domain"
@@ -32,6 +33,7 @@ type AccountService struct {
 	repoManager ports.RepoManager
 	bcScanner   ports.BlockchainScanner
 	cosigner    ports.Cosigner
+	txQueue     *transactionQueue
 
 	log  func(format string, a ...interface{})
 	warn func(err error, format string, a ...interface{})
@@ -42,6 +44,7 @@ func NewAccountService(
 	bcScanner ports.BlockchainScanner,
 	cosigner ports.Cosigner,
 ) *AccountService {
+	txQueue := newTransactionQueue()
 	logFn := func(format string, a ...interface{}) {
 		format = fmt.Sprintf("account service: %s", format)
 		log.Debugf(format, a...)
@@ -51,7 +54,9 @@ func NewAccountService(
 		log.WithError(err).Warnf(format, a...)
 	}
 
-	svc := &AccountService{repoManager, bcScanner, cosigner, logFn, warnFn}
+	svc := &AccountService{
+		repoManager, bcScanner, cosigner, txQueue, logFn, warnFn,
+	}
 	svc.registerHandlerForWalletEvents()
 	return svc
 }
@@ -357,50 +362,55 @@ func (as *AccountService) listenToTxChannel(
 ) {
 	as.log("start listening to tx channel for account %s", accountName)
 
+	// Every tx received from the blockchain scanner is pushed to a queue that is
+	// emptied 1 second after the first elem is added. All the queued txs are
+	// then persisted in the repository. This because it can happen to receive
+	// here the same tx on 2 different channels in case the user moves
+	// funds from one account to another.
+	// In such cases, the queue takes care of updating a tx if it's already
+	// queued, instead of doing this operation against the repo (can be slower).
+	for tx := range chTxs {
+		if as.txQueue.len() <= 0 {
+			go func() {
+				time.Sleep(time.Second)
+				as.storeQueuedTransactions()
+			}()
+		}
+		as.txQueue.pushBack(tx)
+	}
+}
+
+func (as *AccountService) storeQueuedTransactions() {
+	txs := as.txQueue.pop()
 	ctx := context.Background()
 	txRepo := as.repoManager.TransactionRepository()
-	for tx := range chTxs {
-		time.Sleep(time.Millisecond)
-
-		as.log("received new tx %s from channel", tx.TxID)
-
+	for _, tx := range txs {
 		gotTx, _ := txRepo.GetTransaction(ctx, tx.TxID)
+		accounts := strings.Join(tx.GetAccounts(), ", ")
 		if gotTx == nil {
+			as.log("received new tx %s from channel", tx.TxID)
+
 			if _, err := txRepo.AddTransaction(ctx, tx); err != nil {
-				as.warn(
-					err, "error while adding new transaction %s for account %s",
-					tx.TxID, accountName,
-				)
+				as.warn(err, "error while adding new transaction %s", tx.TxID)
 				continue
 			}
-			as.log("added new transaction %s for account %s", tx.TxID, accountName)
+			as.log("added new transaction %s for account(s) %s", tx.TxID, accounts)
 			continue
 		}
+
 		if !gotTx.IsConfirmed() && tx.IsConfirmed() {
+			as.log("received confirmed tx %s from channel", tx.TxID)
+
 			if _, err := txRepo.ConfirmTransaction(
 				ctx, tx.TxID, tx.BlockHash, tx.BlockHeight,
 			); err != nil {
 				as.warn(
-					err, "error while confirming transaction %s for account %s",
-					tx.TxID, accountName,
+					err, "error while confirming transaction %s for account(s) %s",
+					tx.TxID, accounts,
 				)
-			}
-			as.log("confirmed transaction %s for account %s", tx.TxID, accountName)
-		}
-
-		if !gotTx.HasAccounts(tx) {
-			if err := txRepo.UpdateTransaction(
-				ctx, tx.TxID, func(t *domain.Transaction) (*domain.Transaction, error) {
-					for _, account := range tx.GetAccounts() {
-						t.AddAccount(account)
-					}
-					return t, nil
-				},
-			); err != nil {
-				as.warn(err, "error while updating accounts to transaction %s", tx.TxID)
 				continue
 			}
-			as.log("updated accounts for transaction %s", tx.TxID)
+			as.log("confirmed transaction %s for account(s) %s", tx.TxID, accounts)
 		}
 	}
 }
