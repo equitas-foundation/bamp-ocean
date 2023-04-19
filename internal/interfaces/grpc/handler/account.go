@@ -21,27 +21,26 @@ func NewAccountHandler(appSvc *application.AccountService) pb.AccountServiceServ
 func (a *account) CreateAccountBIP44(
 	ctx context.Context, req *pb.CreateAccountBIP44Request,
 ) (*pb.CreateAccountBIP44Response, error) {
-	name, err := parseAccountName(req.GetName())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	accountInfo, err := a.appSvc.CreateAccountBIP44(ctx, name)
+	accountInfo, err := a.appSvc.CreateAccountBIP44(ctx, req.GetLabel())
 	if err != nil {
 		return nil, err
 	}
+	masterBlindingKey, _ := accountInfo.GetMasterBlindingKey()
 	return &pb.CreateAccountBIP44Response{
-		AccountName:    accountInfo.Key.Name,
-		AccountIndex:   accountInfo.Key.Index,
-		Xpub:           accountInfo.Xpubs[0],
-		DerivationPath: accountInfo.DerivationPath,
+		Info: &pb.AccountInfo{
+			Namespace:         accountInfo.Namespace,
+			Label:             accountInfo.Label,
+			Xpubs:             accountInfo.Xpubs,
+			DerivationPath:    accountInfo.DerivationPath,
+			MasterBlindingKey: masterBlindingKey,
+		},
 	}, nil
 }
 
 func (a *account) CreateAccountMultiSig(
 	ctx context.Context, req *pb.CreateAccountMultiSigRequest,
 ) (*pb.CreateAccountMultiSigResponse, error) {
-	name, err := parseAccountName(req.GetName())
+	name, err := parseAccountName(req.GetLabel())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -50,11 +49,15 @@ func (a *account) CreateAccountMultiSig(
 	if err != nil {
 		return nil, err
 	}
+	masterBlindingKey, _ := accountInfo.GetMasterBlindingKey()
 	return &pb.CreateAccountMultiSigResponse{
-		AccountName:    accountInfo.Key.Name,
-		AccountIndex:   accountInfo.Key.Index,
-		Xpubs:          accountInfo.Xpubs,
-		DerivationPath: accountInfo.DerivationPath,
+		Info: &pb.AccountInfo{
+			Namespace:         accountInfo.Namespace,
+			Label:             accountInfo.Label,
+			Xpubs:             accountInfo.Xpubs,
+			DerivationPath:    accountInfo.DerivationPath,
+			MasterBlindingKey: masterBlindingKey,
+		},
 	}, nil
 }
 
@@ -62,6 +65,34 @@ func (a *account) CreateAccountCustom(
 	ctx context.Context, req *pb.CreateAccountCustomRequest,
 ) (*pb.CreateAccountCustomResponse, error) {
 	return nil, fmt.Errorf("not implemented")
+}
+
+func (a *account) SetAccountLabel(
+	ctx context.Context, req *pb.SetAccountLabelRequest,
+) (*pb.SetAccountLabelResponse, error) {
+	accountName, err := parseAccountName(req.GetAccountName())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	label, err := parseAccountName(req.GetLabel())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	accountInfo, err := a.appSvc.SetAccountLabel(ctx, accountName, label)
+	if err != nil {
+		return nil, err
+	}
+	masterBlindingKey, _ := accountInfo.GetMasterBlindingKey()
+	return &pb.SetAccountLabelResponse{
+		Info: &pb.AccountInfo{
+			Namespace:         accountInfo.Namespace,
+			Label:             accountInfo.Label,
+			Xpubs:             accountInfo.Xpubs,
+			DerivationPath:    accountInfo.DerivationPath,
+			MasterBlindingKey: masterBlindingKey,
+		},
+	}, nil
 }
 
 func (a *account) SetAccountTemplate(

@@ -4,23 +4,23 @@ INSERT INTO wallet(id, encrypted_mnemonic,password_hash,birthday_block_height,ro
 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *;
 
 -- name: GetWalletAccountsAndScripts :many
-SELECT w.id as walletId,w.encrypted_mnemonic,w.password_hash,w.birthday_block_height,w.root_path,w.ms_root_path,w.network_name,w.next_account_index,w.next_ms_account_index, a.name,a.index,a.xpubs,a.derivation_path as account_derivation_path,a.next_external_index,a.next_internal_index,a.fk_wallet_id,asi.script,asi.derivation_path as script_derivation_path,asi.fk_account_name FROM
+SELECT w.id as walletId,w.encrypted_mnemonic,w.password_hash,w.birthday_block_height,w.root_path,w.ms_root_path,w.network_name,w.next_account_index,w.next_ms_account_index, a.namespace,a.label,a.index,a.xpubs,a.derivation_path as account_derivation_path,a.next_external_index,a.next_internal_index,a.fk_wallet_id,asi.script,asi.derivation_path as script_derivation_path,asi.fk_account_name FROM
 wallet w LEFT JOIN account a ON w.id = a.fk_wallet_id
-LEFT JOIN account_script_info asi on a.name = asi.fk_account_name
+LEFT JOIN account_script_info asi on a.namespace = asi.fk_account_name
 WHERE w.id = $1;
 
 -- name: UpdateWallet :one
 UPDATE wallet SET encrypted_mnemonic = $2, password_hash = $3, birthday_block_height = $4, root_path = $5, ms_root_path = $6, network_name = $7, next_account_index = $8, next_ms_account_index = $9 WHERE id = $1 RETURNING *;
 
 -- name: GetAccount :one
-SELECT * FROM account WHERE name = $1;
+SELECT * FROM account WHERE namespace = $1 OR label = $1;
 
 -- name: InsertAccount :one
-INSERT INTO account(name,index,xpubs,derivation_path,next_external_index,next_internal_index,fk_wallet_id)
-VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *;
+INSERT INTO account(namespace,label,index,xpubs,derivation_path,next_external_index,next_internal_index,fk_wallet_id)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *;
 
--- name: UpdateAccountIndexes :one
-UPDATE account SET next_external_index = $1, next_internal_index = $2 WHERE name = $3 RETURNING *;
+-- name: UpdateAccount :one
+UPDATE account SET next_external_index = $1, next_internal_index = $2, label = $3 WHERE namespace = $4 RETURNING *;
 
 -- name: InsertAccountScripts :copyfrom
 INSERT INTO account_script_info (script,derivation_path,fk_account_name) VALUES ($1, $2, $3);
@@ -29,7 +29,7 @@ INSERT INTO account_script_info (script,derivation_path,fk_account_name) VALUES 
 DELETE FROM account_script_info WHERE fk_account_name = $1;
 
 -- name: DeleteAccount :exec
-DELETE FROM account WHERE name = $1;
+DELETE FROM account WHERE namespace = $1;
 
 /* UTXO */
 -- name: InsertUtxo :one

@@ -41,11 +41,13 @@ func parseNetwork(network string) pb.GetInfoResponse_Network {
 func parseAccounts(accounts []application.AccountInfo) []*pb.AccountInfo {
 	list := make([]*pb.AccountInfo, 0, len(accounts))
 	for _, a := range accounts {
+		masterBlindingKey, _ := a.GetMasterBlindingKey()
 		list = append(list, &pb.AccountInfo{
-			Name:           a.Key.Name,
-			Index:          a.Key.Index,
-			Xpubs:          a.Xpubs,
-			DerivationPath: a.DerivationPath,
+			Namespace:         a.Namespace,
+			Label:             a.Label,
+			Xpubs:             a.Xpubs,
+			DerivationPath:    a.DerivationPath,
+			MasterBlindingKey: masterBlindingKey,
 		})
 	}
 	return list
@@ -53,7 +55,7 @@ func parseAccounts(accounts []application.AccountInfo) []*pb.AccountInfo {
 
 func parseAccountName(name string) (string, error) {
 	if name == "" {
-		return "", fmt.Errorf("missing account name")
+		return "", fmt.Errorf("missing account namespace or label")
 	}
 	return name, nil
 }

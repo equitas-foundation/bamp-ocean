@@ -11,8 +11,9 @@ CREATE TABLE wallet (
 );
 
 CREATE TABLE account (
-    name VARCHAR(50) NOT NULL PRIMARY KEY,
+    namespace VARCHAR(50) NOT NULL PRIMARY KEY,
     index INTEGER NOT NULL,
+    label VARCHAR(500),
     xpubs VARCHAR(200) ARRAY NOT NULL,
     derivation_path VARCHAR(200) NOT NULL,
     next_external_index INTEGER NOT NULL,
@@ -25,7 +26,7 @@ CREATE TABLE account_script_info (
     script VARCHAR(1000) NOT NULL PRIMARY KEY,
     derivation_path VARCHAR(200) NOT NULL,
     fk_account_name VARCHAR(50) NOT NULL,
-    FOREIGN KEY (fk_account_name) REFERENCES account(name)
+    FOREIGN KEY (fk_account_name) REFERENCES account(namespace) ON DELETE CASCADE
 );
 
 CREATE TABLE transaction (

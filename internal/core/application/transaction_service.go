@@ -93,12 +93,13 @@ func (ts *TransactionService) SelectUtxos(
 	ctx context.Context, accountName, targetAsset string, targetAmount uint64,
 	coinSelectionStrategy int,
 ) (Utxos, uint64, int64, error) {
-	if _, err := ts.getAccount(ctx, accountName); err != nil {
+	account, err := ts.getAccount(ctx, accountName)
+	if err != nil {
 		return nil, 0, -1, err
 	}
 
 	utxos, err := ts.repoManager.UtxoRepository().GetSpendableUtxosForAccount(
-		ctx, accountName,
+		ctx, account.Namespace,
 	)
 	if err != nil {
 		return nil, 0, -1, err
@@ -125,7 +126,7 @@ func (ts *TransactionService) SelectUtxos(
 	if count > 0 {
 		ts.log(
 			"locked %d utxo(s) for account %s (%s)",
-			count, accountName, UtxoKeys(keys),
+			count, account.Namespace, UtxoKeys(keys),
 		)
 	}
 
@@ -197,9 +198,9 @@ func (ts *TransactionService) SignTransaction(
 	if len(msInputs) > 0 {
 		for _, a := range msInputs {
 			ww, _ := multisig.NewWalletFromMnemonic(multisig.NewWalletFromMnemonicArgs{
-				RootPath: a.account.Info.DerivationPath,
+				RootPath: a.account.DerivationPath,
 				Mnemonic: mnemonic,
-				Xpubs:    a.account.Info.Xpubs,
+				Xpubs:    a.account.Xpubs,
 			})
 			tx, err = ww.SignTransaction(multisig.SignTransactionArgs{
 				TxHex:        tx,
@@ -391,9 +392,9 @@ func (ts *TransactionService) SignPset(
 	if len(msInputs) > 0 {
 		for _, a := range msInputs {
 			ww, _ := multisig.NewWalletFromMnemonic(multisig.NewWalletFromMnemonicArgs{
-				RootPath: a.account.Info.DerivationPath,
+				RootPath: a.account.DerivationPath,
 				Mnemonic: mnemonic,
-				Xpubs:    a.account.Info.Xpubs,
+				Xpubs:    a.account.Xpubs,
 			})
 
 			derivationPaths := make(map[string]string)
@@ -441,7 +442,7 @@ func (ts *TransactionService) Transfer(
 	utxoRepo := ts.repoManager.UtxoRepository()
 	walletRepo := ts.repoManager.WalletRepository()
 
-	balance, err := utxoRepo.GetBalanceForAccount(ctx, accountName)
+	balance, err := utxoRepo.GetBalanceForAccount(ctx, account.Namespace)
 	if err != nil {
 		return "", err
 	}
@@ -450,7 +451,7 @@ func (ts *TransactionService) Transfer(
 	}
 
 	utxos, err := utxoRepo.GetSpendableUtxosForAccount(
-		ctx, accountName,
+		ctx, account.Namespace,
 	)
 	if err != nil {
 		return "", err
@@ -498,7 +499,7 @@ func (ts *TransactionService) Transfer(
 	changeOutputs := make([]wallet.Output, 0)
 	if len(changeByAsset) > 0 {
 		addressesInfo, err := walletRepo.DeriveNextInternalAddressesForAccount(
-			ctx, accountName, uint64(len(changeByAsset)),
+			ctx, account.Namespace, uint64(len(changeByAsset)),
 		)
 		if err != nil {
 			return "", err
@@ -611,7 +612,7 @@ func (ts *TransactionService) Transfer(
 				// change output to the list if it's still not in the list.
 				if _, ok := changeByAsset[targetAsset]; !ok {
 					addrInfo, err := walletRepo.DeriveNextInternalAddressesForAccount(
-						ctx, accountName, 1,
+						ctx, account.Namespace, 1,
 					)
 					if err != nil {
 						return "", err
@@ -670,9 +671,9 @@ func (ts *TransactionService) Transfer(
 	var signedPtx string
 	if account.IsMultiSig() {
 		ww, _ := multisig.NewWalletFromMnemonic(multisig.NewWalletFromMnemonicArgs{
-			RootPath: account.Info.DerivationPath,
+			RootPath: account.DerivationPath,
 			Mnemonic: mnemonic,
-			Xpubs:    account.Info.Xpubs,
+			Xpubs:    account.Xpubs,
 		})
 		signedPtx, err = ww.SignPset(multisig.SignPsetArgs{
 			PsetBase64:        blindedPtx,
@@ -718,7 +719,7 @@ func (ts *TransactionService) Transfer(
 	if count > 0 {
 		ts.log(
 			"locked %d utxo(s) for account %s (%s) ",
-			count, accountName, UtxoKeys(keys),
+			count, account.Namespace, UtxoKeys(keys),
 		)
 	}
 
@@ -754,7 +755,7 @@ func (ts *TransactionService) scheduleUtxoUnlocker() {
 	utxoRepo := ts.repoManager.UtxoRepository()
 	w, _ := ts.repoManager.WalletRepository().GetWallet(ctx)
 
-	for accountName := range w.AccountKeysByName {
+	for accountName := range w.Accounts {
 		utxos, _ := utxoRepo.GetLockedUtxosForAccount(
 			ctx, accountName,
 		)
@@ -980,7 +981,7 @@ func (ts *TransactionService) findLockedInputs(
 			DerivationPath:  account.DerivationPathByScript[script],
 		}
 		if account.IsMultiSig() {
-			accountName := account.Info.Key.Name
+			accountName := account.Namespace
 			if _, ok := msInputs[accountName]; !ok {
 				msInputs[accountName] = accountInput{account, make(map[uint32]wallet.Input)}
 			}

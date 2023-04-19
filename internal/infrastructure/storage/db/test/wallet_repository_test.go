@@ -162,7 +162,7 @@ func testManageWalletAccount(t *testing.T, repo domain.WalletRepository) {
 		require.NoError(t, err)
 		require.NotNil(t, account)
 
-		account, err = repo.CreateAccount(ctx, account.Key.Name, "", 0)
+		account, err = repo.CreateAccount(ctx, account.Label, "", 0)
 		require.Error(t, err)
 		require.Nil(t, account)
 	})

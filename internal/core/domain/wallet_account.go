@@ -6,24 +6,16 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
+	path "github.com/equitas-foundation/bamp-ocean/pkg/wallet/derivation-path"
+	multisig "github.com/equitas-foundation/bamp-ocean/pkg/wallet/multi-sig"
+	singlesig "github.com/equitas-foundation/bamp-ocean/pkg/wallet/single-sig"
 )
-
-// AccountKey holds the unique info of an account: name and HD index.
-type AccountKey struct {
-	Name  string
-	Index uint32
-}
-
-func (ak *AccountKey) String() string {
-	key := btcutil.Hash160([]byte(fmt.Sprintf("%s%d", ak.Name, ak.Index)))
-	return hex.EncodeToString(key[:6])
-}
 
 // AccountInfo holds basic info about an account.
 type AccountInfo struct {
-	Key            AccountKey
+	Namespace      string
+	Label          string
 	Xpubs          []string
 	DerivationPath string
 }
@@ -32,10 +24,31 @@ func (a AccountInfo) Descriptor() string {
 	return fmt.Sprintf("elwsh(sortedmulti(%d, %s))", len(a.Xpubs), strings.Join(a.Xpubs, ","))
 }
 
+func (i *AccountInfo) GetMasterBlindingKey() (string, error) {
+	mnemonic := MnemonicStore.Get()
+	if len(i.Xpubs) > 1 {
+		ww, _ := multisig.NewWalletFromMnemonic(multisig.NewWalletFromMnemonicArgs{
+			RootPath: i.DerivationPath,
+			Mnemonic: mnemonic,
+			Xpubs:    i.Xpubs,
+		})
+		return ww.MasterBlindingKey()
+	}
+
+	rootPath, _ := path.ParseDerivationPath(i.DerivationPath)
+	rootPath = rootPath[:len(rootPath)-1]
+	ww, _ := singlesig.NewWalletFromMnemonic(singlesig.NewWalletFromMnemonicArgs{
+		RootPath: rootPath.String(),
+		Mnemonic: mnemonic,
+	})
+	return ww.MasterBlindingKey()
+}
+
 // Account defines the entity data struture for a derived account of the
 // daemon's HD wallet
 type Account struct {
-	Info                   AccountInfo
+	AccountInfo
+	Index                  uint32
 	BirthdayBlock          uint32
 	NextExternalIndex      uint
 	NextInternalIndex      uint
@@ -43,11 +56,11 @@ type Account struct {
 }
 
 func (a *Account) IsMultiSig() bool {
-	return len(a.Info.Xpubs) > 1
+	return len(a.AccountInfo.Xpubs) > 1
 }
 
 func (a *Account) Id() string {
-	id := sha256.Sum256([]byte(a.Info.Descriptor()))
+	id := sha256.Sum256([]byte(a.AccountInfo.Descriptor()))
 	return hex.EncodeToString(id[:])
 }
 

@@ -55,9 +55,8 @@ func TestNewWallet(t *testing.T) {
 		require.Equal(t, regtest, w.NetworkName)
 		require.Equal(t, encryptedMnemonic, b2h(w.EncryptedMnemonic))
 		require.Equal(t, passwordHash, b2h(w.PasswordHash))
-		require.Empty(t, w.AccountKeysByIndex)
-		require.Empty(t, w.AccountKeysByName)
-		require.Empty(t, w.AccountsByKey)
+		require.Empty(t, w.Accounts)
+		require.Empty(t, w.AccountsByLabel)
 		require.Equal(t, 0, int(w.NextAccountIndex))
 		require.True(t, w.IsInitialized())
 		require.True(t, w.IsLocked())
@@ -68,10 +67,6 @@ func TestNewWallet(t *testing.T) {
 		m, err := w.GetMnemonic()
 		require.NoError(t, err)
 		require.Equal(t, mnemonic, m)
-
-		masterKey, err := w.GetMasterBlindingKey()
-		require.NoError(t, err)
-		require.Equal(t, masterBlingingKey, masterKey)
 
 		err = w.Lock("wrong password")
 		require.EqualError(t, err, domain.ErrWalletInvalidPassword.Error())
@@ -84,10 +79,6 @@ func TestNewWallet(t *testing.T) {
 		m, err = w.GetMnemonic()
 		require.EqualError(t, domain.ErrWalletLocked, err.Error())
 		require.Empty(t, m)
-
-		masterKey, err = w.GetMasterBlindingKey()
-		require.EqualError(t, domain.ErrWalletLocked, err.Error())
-		require.Empty(t, masterKey)
 	})
 
 	t.Run("invalid", func(t *testing.T) {
@@ -172,10 +163,15 @@ func TestWalletAccount(t *testing.T) {
 	require.Empty(t, account.NextExternalIndex)
 	require.Empty(t, account.NextInternalIndex)
 	require.Empty(t, account.DerivationPathByScript)
-	require.Equal(t, 0, int(account.Info.Key.Index))
-	require.Equal(t, accountName, account.Info.Key.Name)
-	require.Equal(t, "m/84'/1'/0'", account.Info.DerivationPath)
-	require.NotEmpty(t, account.Info.Xpubs)
+	require.Equal(t, 0, int(account.Index))
+	require.Equal(t, "bip84-account0", account.Namespace)
+	require.Equal(t, accountName, account.Label)
+	require.Equal(t, "m/84'/1'/0'", account.DerivationPath)
+	require.Len(t, account.Xpubs, 1)
+
+	masterKey, err := account.AccountInfo.GetMasterBlindingKey()
+	require.NoError(t, err)
+	require.Equal(t, masterBlingingKey, masterKey)
 
 	err = w.Lock(password)
 	require.NoError(t, err)
@@ -219,7 +215,7 @@ func TestWalletAccount(t *testing.T) {
 	require.NotEmpty(t, addrInfo.BlindingKey)
 	require.NotEmpty(t, addrInfo.Script)
 	require.NotEmpty(t, addrInfo.DerivationPath)
-	require.NotEmpty(t, addrInfo.AccountKey.Name)
+	require.NotEmpty(t, addrInfo.Account)
 
 	allAddrInfo, err = w.AllDerivedAddressesForAccount(accountName)
 	require.NoError(t, err)
@@ -262,10 +258,11 @@ func TestWalletMSAccount(t *testing.T) {
 	require.Empty(t, account.NextExternalIndex)
 	require.Empty(t, account.NextInternalIndex)
 	require.Empty(t, account.DerivationPathByScript)
-	require.Equal(t, 0, int(account.Info.Key.Index))
-	require.Equal(t, accountName, account.Info.Key.Name)
-	require.Equal(t, "m/48'/1'/0'/2'", account.Info.DerivationPath)
-	require.Len(t, account.Info.Xpubs, 2)
+	require.Equal(t, 0, int(account.Index))
+	require.Equal(t, "bip48-account0", account.Namespace)
+	require.Equal(t, accountName, account.Label)
+	require.Equal(t, "m/48'/1'/0'/2'", account.DerivationPath)
+	require.Len(t, account.Xpubs, 2)
 
 	err = w.Lock(password)
 	require.NoError(t, err)
@@ -309,7 +306,7 @@ func TestWalletMSAccount(t *testing.T) {
 	require.NotEmpty(t, addrInfo.BlindingKey)
 	require.NotEmpty(t, addrInfo.Script)
 	require.NotEmpty(t, addrInfo.DerivationPath)
-	require.NotEmpty(t, addrInfo.AccountKey.Name)
+	require.NotEmpty(t, addrInfo.Account)
 
 	allAddrInfo, err = w.AllDerivedAddressesForAccount(accountName)
 	require.NoError(t, err)

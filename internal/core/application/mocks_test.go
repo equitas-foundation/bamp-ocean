@@ -35,7 +35,7 @@ func (m *mockBcScanner) WatchForAccount(
 ) {
 	addresses := application.AddressesInfo(addrInfo).Addresses()
 	if len(addresses) > 0 {
-		utxos := randomUtxos(accountName, addresses)
+		utxos := randomUtxos(accountNamespace, addresses)
 		m.chUtxos <- utxos
 
 		for _, u := range utxos {
