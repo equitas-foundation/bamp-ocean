@@ -25,6 +25,7 @@ type AdminServiceClient interface {
 	AddWhitelistedAddresses(ctx context.Context, in *AddWhitelistedAddressesRequest, opts ...grpc.CallOption) (*AddWhitelistedAddressesResponse, error)
 	GetWhitelist(ctx context.Context, in *GetWhitelistRequest, opts ...grpc.CallOption) (*GetWhitelistResponse, error)
 	DeleteWhitelistedAddresses(ctx context.Context, in *DeleteWhitelistedAddressesRequest, opts ...grpc.CallOption) (*DeleteWhitelistedAddressesResponse, error)
+	AddOrDeleteWhitelistedWallet(ctx context.Context, in *AddOrDeleteWhitelistedWalletRequest, opts ...grpc.CallOption) (*AddOrDeleteWhitelistedWalletResponse, error)
 }
 
 type adminServiceClient struct {
@@ -62,6 +63,15 @@ func (c *adminServiceClient) DeleteWhitelistedAddresses(ctx context.Context, in 
 	return out, nil
 }
 
+func (c *adminServiceClient) AddOrDeleteWhitelistedWallet(ctx context.Context, in *AddOrDeleteWhitelistedWalletRequest, opts ...grpc.CallOption) (*AddOrDeleteWhitelistedWalletResponse, error) {
+	out := new(AddOrDeleteWhitelistedWalletResponse)
+	err := c.cc.Invoke(ctx, "/bamp.v1.AdminService/AddOrDeleteWhitelistedWallet", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdminServiceServer is the server API for AdminService service.
 // All implementations should embed UnimplementedAdminServiceServer
 // for forward compatibility
@@ -69,6 +79,7 @@ type AdminServiceServer interface {
 	AddWhitelistedAddresses(context.Context, *AddWhitelistedAddressesRequest) (*AddWhitelistedAddressesResponse, error)
 	GetWhitelist(context.Context, *GetWhitelistRequest) (*GetWhitelistResponse, error)
 	DeleteWhitelistedAddresses(context.Context, *DeleteWhitelistedAddressesRequest) (*DeleteWhitelistedAddressesResponse, error)
+	AddOrDeleteWhitelistedWallet(context.Context, *AddOrDeleteWhitelistedWalletRequest) (*AddOrDeleteWhitelistedWalletResponse, error)
 }
 
 // UnimplementedAdminServiceServer should be embedded to have forward compatible implementations.
@@ -83,6 +94,9 @@ func (UnimplementedAdminServiceServer) GetWhitelist(context.Context, *GetWhiteli
 }
 func (UnimplementedAdminServiceServer) DeleteWhitelistedAddresses(context.Context, *DeleteWhitelistedAddressesRequest) (*DeleteWhitelistedAddressesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteWhitelistedAddresses not implemented")
+}
+func (UnimplementedAdminServiceServer) AddOrDeleteWhitelistedWallet(context.Context, *AddOrDeleteWhitelistedWalletRequest) (*AddOrDeleteWhitelistedWalletResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddOrDeleteWhitelistedWallet not implemented")
 }
 
 // UnsafeAdminServiceServer may be embedded to opt out of forward compatibility for this service.
@@ -150,6 +164,24 @@ func _AdminService_DeleteWhitelistedAddresses_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_AddOrDeleteWhitelistedWallet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddOrDeleteWhitelistedWalletRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).AddOrDeleteWhitelistedWallet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/bamp.v1.AdminService/AddOrDeleteWhitelistedWallet",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).AddOrDeleteWhitelistedWallet(ctx, req.(*AddOrDeleteWhitelistedWalletRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdminService_ServiceDesc is the grpc.ServiceDesc for AdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -168,6 +200,10 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteWhitelistedAddresses",
 			Handler:    _AdminService_DeleteWhitelistedAddresses_Handler,
+		},
+		{
+			MethodName: "AddOrDeleteWhitelistedWallet",
+			Handler:    _AdminService_AddOrDeleteWhitelistedWallet_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

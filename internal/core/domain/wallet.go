@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/btcsuite/btcd/btcutil"
@@ -63,6 +64,14 @@ type Wallet struct {
 	NextMSAccountIndex  uint32
 }
 
+// GetAccountNamespace generates a unique account namespace from the given root
+// path and account derivation index.
+func GetAccountNamespace(rootPath string, index uint32) string {
+	derivationPath, _ := path.ParseDerivationPath(rootPath)
+	purpose := derivationPath[0] - hdkeychain.HardenedKeyStart
+	return fmt.Sprintf("bip%d-account%d", purpose, index)
+}
+
 // NewWallet encrypts the provided mnemonic with the passhrase and returns a new
 // Wallet initialized with the encrypted mnemonic, the hash of the password,
 // the given root path, network and possible a list of accounts for an already
@@ -106,12 +115,20 @@ func NewWallet(
 
 	accountsByNamespace := make(map[string]*Account)
 	accountsByLabel := make(map[string]string)
+	sort.SliceStable(accounts, func(i, j int) bool {
+		return accounts[i].AccountInfo.DerivationPath > accounts[j].AccountInfo.DerivationPath
+	})
 	for i := range accounts {
 		account := accounts[i]
 		accountsByNamespace[account.Namespace] = &account
 		if account.Label != "" {
 			accountsByLabel[account.Label] = account.Namespace
 		}
+	}
+	var nextAccountIndex uint32
+	if len(accounts) > 0 {
+		p, _ := path.ParseDerivationPath(accounts[0].AccountInfo.DerivationPath)
+		nextAccountIndex = p[len(p)-1] - hdkeychain.HardenedKeyStart
 	}
 
 	return &Wallet{
@@ -123,6 +140,7 @@ func NewWallet(
 		Accounts:            accountsByNamespace,
 		AccountsByLabel:     accountsByLabel,
 		NetworkName:         network,
+		NextAccountIndex:    nextAccountIndex,
 	}, nil
 }
 
@@ -222,7 +240,7 @@ func (w *Wallet) CreateAccount(label string, birthdayBlock uint32) (*Account, er
 	}
 
 	mnemonic := MnemonicStore.Get()
-	namespace := getAccountNamespace(w.RootPath, w.NextAccountIndex)
+	namespace := GetAccountNamespace(w.RootPath, w.NextAccountIndex)
 
 	ww, _ := singlesig.NewWalletFromMnemonic(singlesig.NewWalletFromMnemonicArgs{
 		RootPath: w.RootPath,
@@ -273,7 +291,7 @@ func (w *Wallet) CreateMSAccount(
 	}
 
 	mnemonic := MnemonicStore.Get()
-	namespace := getAccountNamespace(w.MSRootPath, w.NextMSAccountIndex)
+	namespace := GetAccountNamespace(w.MSRootPath, w.NextMSAccountIndex)
 
 	derivationPath, _ := path.ParseRootDerivationPath(w.MSRootPath)
 	derivationPath = append(
@@ -665,10 +683,4 @@ func (w *Wallet) allDerivedAddressesForMSAccount(
 
 func networkFromName(net string) *network.Network {
 	return networks[net]
-}
-
-func getAccountNamespace(rootPath string, index uint32) string {
-	derivationPath, _ := path.ParseDerivationPath(rootPath)
-	purpose := derivationPath[0] - hdkeychain.HardenedKeyStart
-	return fmt.Sprintf("bip%d-account%d", purpose, index)
 }

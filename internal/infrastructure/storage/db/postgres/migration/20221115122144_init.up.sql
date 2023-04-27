@@ -19,7 +19,7 @@ CREATE TABLE account (
     next_external_index INTEGER NOT NULL,
     next_internal_index INTEGER NOT NULL,
     fk_wallet_id VARCHAR(255) NOT NULL,
-    FOREIGN KEY (fk_wallet_id) REFERENCES wallet(id)
+    FOREIGN KEY (fk_wallet_id) REFERENCES wallet(id) ON DELETE CASCADE
 );
 
 CREATE TABLE account_script_info (
@@ -40,7 +40,7 @@ CREATE TABLE tx_input_account (
     id SERIAL PRIMARY KEY,
     account_name VARCHAR(50) NOT NULL,
     fk_tx_id VARCHAR(64) NOT NULL,
-    FOREIGN KEY (fk_tx_id) REFERENCES transaction(tx_id)
+    FOREIGN KEY (fk_tx_id) REFERENCES transaction(tx_id) ON DELETE CASCADE
 );
 
 CREATE TABLE utxo (
@@ -71,5 +71,5 @@ CREATE TABLE utxo_status (
     block_hash varchar(64) NOT NULL,
     status integer NOT NULL,
     fk_utxo_id integer NOT NULL,
-    FOREIGN KEY (fk_utxo_id) REFERENCES utxo(id)
+    FOREIGN KEY (fk_utxo_id) REFERENCES utxo(id) ON DELETE CASCADE
 );

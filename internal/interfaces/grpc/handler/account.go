@@ -84,6 +84,7 @@ func (a *account) SetAccountLabel(
 		return nil, err
 	}
 	masterBlindingKey, _ := accountInfo.GetMasterBlindingKey()
+
 	return &pb.SetAccountLabelResponse{
 		Info: &pb.AccountInfo{
 			Namespace:         accountInfo.Namespace,

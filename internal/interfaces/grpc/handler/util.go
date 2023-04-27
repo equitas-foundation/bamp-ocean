@@ -7,6 +7,7 @@ import (
 	pb "github.com/equitas-foundation/bamp-ocean/api-spec/protobuf/gen/go/ocean/v1"
 	"github.com/equitas-foundation/bamp-ocean/internal/core/application"
 	"github.com/equitas-foundation/bamp-ocean/internal/core/domain"
+	path "github.com/equitas-foundation/bamp-ocean/pkg/wallet/derivation-path"
 	"github.com/vulpemventures/go-elements/address"
 	"github.com/vulpemventures/go-elements/elementsutil"
 )
@@ -242,6 +243,9 @@ func parseBlockHeight(height uint32) (uint32, error) {
 	if int(height) < 0 {
 		return 0, fmt.Errorf("invalid block height")
 	}
+	if height == 0 {
+		height = 1
+	}
 	return height, nil
 }
 
@@ -277,4 +281,14 @@ func parseUnblindedInputs(
 		})
 	}
 	return ins, nil
+}
+
+func parseRootPath(p string) (string, error) {
+	if p == "" {
+		return p, nil
+	}
+	if _, err := path.ParseRootDerivationPath(p); err != nil {
+		return "", fmt.Errorf("invalid root path: %s", err)
+	}
+	return p, nil
 }

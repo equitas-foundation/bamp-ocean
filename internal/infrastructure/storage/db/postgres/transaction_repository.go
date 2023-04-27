@@ -24,6 +24,10 @@ type txRepositoryPg struct {
 }
 
 func NewTxRepositoryPgImpl(pgxPool *pgxpool.Pool) domain.TransactionRepository {
+	return newTxRepositoryPgImpl(pgxPool)
+}
+
+func newTxRepositoryPgImpl(pgxPool *pgxpool.Pool) *txRepositoryPg {
 	return &txRepositoryPg{
 		pgxPool:          pgxPool,
 		querier:          queries.New(pgxPool),
@@ -217,4 +221,10 @@ func (t *txRepositoryPg) getTx(
 		BlockHeight: uint64(tx[0].BlockHeight),
 		Accounts:    accounts,
 	}, nil
+}
+
+func (t *txRepositoryPg) reset(
+	querier *queries.Queries, ctx context.Context,
+) {
+	querier.ResetTransactions(ctx)
 }

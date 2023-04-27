@@ -70,7 +70,8 @@ func main() {
 	}
 
 	bcScannerConfig := electrum_scanner.ServiceArgs{
-		Addr: electrumUrl,
+		Addr:    electrumUrl,
+		Network: network,
 	}
 	serviceCfg := grpc_interface.ServiceConfig{
 		Port:         port,
