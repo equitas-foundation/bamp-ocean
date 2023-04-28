@@ -11,6 +11,7 @@ import (
 	"github.com/equitas-foundation/bamp-ocean/internal/core/ports"
 	path "github.com/equitas-foundation/bamp-ocean/pkg/wallet/derivation-path"
 	"github.com/equitas-foundation/bamp-ocean/pkg/wallet/mnemonic"
+	multisig "github.com/equitas-foundation/bamp-ocean/pkg/wallet/multi-sig"
 	singlesig "github.com/equitas-foundation/bamp-ocean/pkg/wallet/single-sig"
 	log "github.com/sirupsen/logrus"
 	"github.com/vulpemventures/go-elements/elementsutil"
@@ -38,6 +39,7 @@ const (
 type WalletService struct {
 	repoManager ports.RepoManager
 	bcScanner   ports.BlockchainScanner
+	cosigner    ports.Cosigner
 	rootPath    string
 	msRootPath  string
 	network     *network.Network
@@ -53,7 +55,8 @@ type WalletService struct {
 
 func NewWalletService(
 	repoManager ports.RepoManager, bcScanner ports.BlockchainScanner,
-	rootPath string, net *network.Network, buildInfo BuildInfo,
+	cosigner ports.Cosigner, rootPath string, net *network.Network,
+	buildInfo BuildInfo,
 ) *WalletService {
 	coinType := 1
 	if net.Name == "liquid" {
@@ -67,6 +70,7 @@ func NewWalletService(
 	ws := &WalletService{
 		repoManager: repoManager,
 		bcScanner:   bcScanner,
+		cosigner:    cosigner,
 		rootPath:    rootPath,
 		msRootPath:  msRootPath,
 		network:     net,
@@ -288,11 +292,8 @@ func (ws *WalletService) RestoreWallet(
 	}
 
 	for i := range utxos {
-		utxo := utxos[i]
-		if utxo.IsSpent() {
-			continue
-		}
-		utxos[i].AccountName = accountByScript[hex.EncodeToString(utxo.Script)]
+		script := hex.EncodeToString(utxos[i].Script)
+		utxos[i].AccountName = accountByScript[script]
 	}
 
 	count, err := ws.repoManager.UtxoRepository().AddUtxos(context.Background(), utxos)
@@ -469,10 +470,11 @@ func (ws *WalletService) restoreSingleSigAccounts(
 		xpub, _ := w.AccountExtendedPublicKey(singlesig.ExtendedKeyArgs{
 			Account: accountIndex,
 		})
+		xpubs := []string{xpub}
 		masterBlidningKeyStr, _ := w.MasterBlindingKey()
 		masterBlindingKey, _ := hex.DecodeString(masterBlidningKeyStr)
 		externalAddresses, internalAddresses, err := ws.bcScanner.RestoreAccount(
-			accountIndex, accountName, xpub, masterBlindingKey, birthdayBlockHeight,
+			accountIndex, accountName, xpubs, masterBlindingKey, birthdayBlockHeight,
 			unusedAddressesThreshold,
 		)
 		if err != nil {
@@ -583,144 +585,160 @@ func (ws *WalletService) restoreMultiSigAccounts(
 	emptyAccountsThreshold, unusedAddressesThreshold, birthdayBlockHeight uint32,
 	mnemonic []string,
 ) (bool, []domain.Account, map[uint32][]domain.AddressInfo, map[string]string, error) {
-	// if emptyAccountsThreshold == 0 {
-	// 	emptyAccountsThreshold = defaultEmptyAccountThreshold
-	// }
-	// if unusedAddressesThreshold == 0 {
-	// 	unusedAddressesThreshold = defaultUnusedAddressesThreshold
-	// }
-	// accountIndex := uint32(0)
-	// emptyAccountCounter := uint32(0)
-	// accounts := make([]domain.Account, 0)
-	// w, _ := multisig.NewWalletFromMnemonic(multisig.NewWalletFromMnemonicArgs{
-	// 	RootPath: ws.msRootPath,
-	// 	Mnemonic: mnemonic,
-	// 	Xpubs:    []string{},
-	// })
+	if emptyAccountsThreshold == 0 {
+		emptyAccountsThreshold = defaultEmptyAccountThreshold
+	}
+	if unusedAddressesThreshold == 0 {
+		unusedAddressesThreshold = defaultUnusedAddressesThreshold
+	}
+	accountIndex := uint32(0)
+	emptyAccountCounter := uint32(0)
+	accounts := make([]domain.Account, 0)
 
-	// if !sendMessage(canceled, chMessages, WalletRestoreMessage{
-	// 	Message: "start restoring wallet accounts...",
-	// }) {
-	// 	return false, nil, nil, nil, nil
-	// }
+	if !sendMessage(canceled, chMessages, WalletRestoreMessage{
+		Message: "start restoring wallet multisig accounts...",
+	}) {
+		return false, nil, nil, nil, nil
+	}
 
-	// addressesByAccount := make(map[uint32][]domain.AddressInfo)
-	// accountByScript := make(map[string]string)
-	// for {
-	// 	if emptyAccountCounter == emptyAccountsThreshold {
-	// 		break
-	// 	}
+	// TODO: this call should be moved inside the following loop once
+	// the cosigner supports returning a xpub based on account index.
+	cosignerXpub, err := ws.cosigner.GetXpub(context.Background())
+	if err != nil {
+		return true, nil, nil, nil, err
+	}
 
-	// 	accountName := domain.GetAccountNamespace(ws.msRootPath, accountIndex)
+	addressesByAccount := make(map[uint32][]domain.AddressInfo)
+	accountByScript := make(map[string]string)
+	for {
+		if emptyAccountCounter == emptyAccountsThreshold {
+			break
+		}
 
-	// 	msg := fmt.Sprintf("restoring account %d...", accountIndex)
-	// 	if !sendMessage(canceled, chMessages, WalletRestoreMessage{
-	// 		Message: msg,
-	// 	}) {
-	// 		return false, nil, nil, nil, nil
-	// 	}
-	// 	ws.log(msg)
-	// 	xpub, _ := w.AccountExtendedPublicKey()
-	// 	masterBlidningKeyStr, _ := w.MasterBlindingKey()
-	// 	masterBlindingKey, _ := hex.DecodeString(masterBlidningKeyStr)
-	// 	externalAddresses, internalAddresses, err := ws.bcScanner.RestoreAccount(
-	// 		accountIndex, accountName, xpub, masterBlindingKey, birthdayBlockHeight,
-	// 		unusedAddressesThreshold,
-	// 	)
-	// 	if err != nil {
-	// 		return true, nil, nil, nil, err
-	// 	}
+		accountName := domain.GetAccountNamespace(ws.msRootPath, accountIndex)
 
-	// 	if len(externalAddresses) <= 0 && len(internalAddresses) <= 0 {
-	// 		if !sendMessage(canceled, chMessages, WalletRestoreMessage{
-	// 			Message: fmt.Sprintf("account %d empty", accountIndex),
-	// 		}) {
-	// 			return false, nil, nil, nil, nil
-	// 		}
-	// 		ws.log("account %d empty", accountIndex)
-	// 		emptyAccountCounter++
-	// 		accountIndex++
-	// 		continue
-	// 	}
+		msg := fmt.Sprintf("restoring multisig account %d...", accountIndex)
+		if !sendMessage(canceled, chMessages, WalletRestoreMessage{
+			Message: msg,
+		}) {
+			return false, nil, nil, nil, nil
+		}
+		ws.log(msg)
+		w, _ := multisig.NewWalletFromMnemonic(multisig.NewWalletFromMnemonicArgs{
+			RootPath: fmt.Sprintf("%s/%d'/2'", ws.msRootPath, accountIndex),
+			Mnemonic: mnemonic,
+			Xpubs:    []string{cosignerXpub},
+		})
 
-	// 	msg = fmt.Sprintf(
-	// 		"found %d external address(es) for account %d",
-	// 		len(externalAddresses), accountIndex,
-	// 	)
-	// 	if !sendMessage(canceled, chMessages, WalletRestoreMessage{
-	// 		Message: msg,
-	// 	}) {
-	// 		return false, nil, nil, nil, nil
-	// 	}
-	// 	ws.log(msg)
+		xpub, _ := w.AccountExtendedPublicKey()
+		xpubs := []string{xpub, cosignerXpub}
+		masterBlidningKeyStr, _ := w.MasterBlindingKey()
+		masterBlindingKey, _ := hex.DecodeString(masterBlidningKeyStr)
+		externalAddresses, internalAddresses, err := ws.bcScanner.RestoreAccount(
+			accountIndex, accountName, xpubs, masterBlindingKey, birthdayBlockHeight,
+			unusedAddressesThreshold,
+		)
+		if err != nil {
+			return true, nil, nil, nil, err
+		}
 
-	// 	msg = fmt.Sprintf(
-	// 		"found %d internal address(es) for account %d",
-	// 		len(internalAddresses), accountIndex,
-	// 	)
-	// 	if !sendMessage(canceled, chMessages, WalletRestoreMessage{
-	// 		Message: msg,
-	// 	}) {
-	// 		return false, nil, nil, nil, nil
-	// 	}
-	// 	ws.log(msg)
+		if len(externalAddresses) <= 0 && len(internalAddresses) <= 0 {
+			if !sendMessage(canceled, chMessages, WalletRestoreMessage{
+				Message: fmt.Sprintf("account %d empty", accountIndex),
+			}) {
+				return false, nil, nil, nil, nil
+			}
+			ws.log("account %d empty", accountIndex)
+			emptyAccountCounter++
+			accountIndex++
+			continue
+		}
 
-	// 	addressesByAccount[accountIndex] = append(
-	// 		addressesByAccount[accountIndex], externalAddresses...,
-	// 	)
-	// 	addressesByAccount[accountIndex] = append(
-	// 		addressesByAccount[accountIndex], internalAddresses...,
-	// 	)
+		msg = fmt.Sprintf(
+			"found %d external address(es) for account %d",
+			len(externalAddresses), accountIndex,
+		)
+		if !sendMessage(canceled, chMessages, WalletRestoreMessage{
+			Message: msg,
+		}) {
+			return false, nil, nil, nil, nil
+		}
+		ws.log(msg)
 
-	// 	// sort addresses by derivation path (desc order) to facilitate retrieving
-	// 	// the last derived index.
-	// 	sort.SliceStable(externalAddresses, func(i, j int) bool {
-	// 		path1, _ := path.ParseDerivationPath(externalAddresses[i].DerivationPath)
-	// 		path2, _ := path.ParseDerivationPath(externalAddresses[j].DerivationPath)
-	// 		return path1[len(path1)-1] > path2[len(path2)-1]
-	// 	})
-	// 	sort.SliceStable(internalAddresses, func(i, j int) bool {
-	// 		path1, _ := path.ParseDerivationPath(internalAddresses[i].DerivationPath)
-	// 		path2, _ := path.ParseDerivationPath(internalAddresses[j].DerivationPath)
-	// 		return path1[len(path1)-1] > path2[len(path2)-1]
-	// 	})
+		msg = fmt.Sprintf(
+			"found %d internal address(es) for account %d",
+			len(internalAddresses), accountIndex,
+		)
+		if !sendMessage(canceled, chMessages, WalletRestoreMessage{
+			Message: msg,
+		}) {
+			return false, nil, nil, nil, nil
+		}
+		ws.log(msg)
 
-	// 	derivationPaths := make(map[string]string)
-	// 	for _, i := range externalAddresses {
-	// 		accountByScript[i.Script] = accountName
-	// 		derivationPaths[i.Script] = i.DerivationPath
-	// 	}
-	// 	for _, i := range internalAddresses {
-	// 		accountByScript[i.Script] = accountName
-	// 		derivationPaths[i.Script] = i.DerivationPath
-	// 	}
+		addressesByAccount[accountIndex] = append(
+			addressesByAccount[accountIndex], externalAddresses...,
+		)
+		addressesByAccount[accountIndex] = append(
+			addressesByAccount[accountIndex], internalAddresses...,
+		)
 
-	// 	var nextExternalIndex, nextInternalIndex uint
-	// 	if len(externalAddresses) > 0 {
-	// 		p, _ := path.ParseDerivationPath(externalAddresses[0].DerivationPath)
-	// 		nextExternalIndex = uint(p[len(p)-1] + 1)
-	// 	}
-	// 	if len(internalAddresses) > 0 {
-	// 		p, _ := path.ParseDerivationPath(internalAddresses[0].DerivationPath)
-	// 		nextInternalIndex = uint(p[len(p)-1] + 1)
-	// 	}
+		// sort addresses by derivation path (desc order) to facilitate retrieving
+		// the last derived index.
+		sort.SliceStable(externalAddresses, func(i, j int) bool {
+			path1, _ := path.ParseDerivationPath(externalAddresses[i].DerivationPath)
+			path2, _ := path.ParseDerivationPath(externalAddresses[j].DerivationPath)
+			return path1[len(path1)-1] > path2[len(path2)-1]
+		})
+		sort.SliceStable(internalAddresses, func(i, j int) bool {
+			path1, _ := path.ParseDerivationPath(internalAddresses[i].DerivationPath)
+			path2, _ := path.ParseDerivationPath(internalAddresses[j].DerivationPath)
+			return path1[len(path1)-1] > path2[len(path2)-1]
+		})
 
-	// 	accounts = append(accounts, domain.Account{
-	// 		AccountInfo: domain.AccountInfo{
-	// 			Namespace:      accountName,
-	// 			Xpubs:          []string{xpub},
-	// 			DerivationPath: fmt.Sprintf("%s/%d'", walletRootPath, accountIndex),
-	// 		},
-	// 		Index:                  accountIndex,
-	// 		BirthdayBlock:          birthdayBlockHeight,
-	// 		NextExternalIndex:      uint(nextExternalIndex),
-	// 		NextInternalIndex:      uint(nextInternalIndex),
-	// 		DerivationPathByScript: derivationPaths,
-	// 	})
-	// 	accountIndex++
-	// 	emptyAccountCounter = 0
-	// }
-	return true, nil, nil, nil, nil
+		derivationPaths := make(map[string]string)
+		for _, i := range externalAddresses {
+			accountByScript[i.Script] = accountName
+			derivationPaths[i.Script] = i.DerivationPath
+		}
+		for _, i := range internalAddresses {
+			accountByScript[i.Script] = accountName
+			derivationPaths[i.Script] = i.DerivationPath
+		}
+
+		var nextExternalIndex, nextInternalIndex uint
+		if len(externalAddresses) > 0 {
+			p, _ := path.ParseDerivationPath(externalAddresses[0].DerivationPath)
+			nextExternalIndex = uint(p[len(p)-1] + 1)
+		}
+		if len(internalAddresses) > 0 {
+			p, _ := path.ParseDerivationPath(internalAddresses[0].DerivationPath)
+			nextInternalIndex = uint(p[len(p)-1] + 1)
+		}
+
+		accounts = append(accounts, domain.Account{
+			AccountInfo: domain.AccountInfo{
+				Namespace:      accountName,
+				Xpubs:          xpubs,
+				DerivationPath: fmt.Sprintf("%s/%d'/2'", ws.msRootPath, accountIndex),
+			},
+			Index:                  accountIndex,
+			BirthdayBlock:          birthdayBlockHeight,
+			NextExternalIndex:      uint(nextExternalIndex),
+			NextInternalIndex:      uint(nextInternalIndex),
+			DerivationPathByScript: derivationPaths,
+		})
+		accountIndex++
+		emptyAccountCounter = 0
+	}
+
+	if !sendMessage(canceled, chMessages, WalletRestoreMessage{
+		Message: "wallet multisig accounts restored",
+	}) {
+		return false, nil, nil, nil, nil
+	}
+
+	return true, accounts, addressesByAccount, accountByScript, nil
 }
 
 func sendMessage(

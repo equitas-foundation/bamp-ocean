@@ -252,8 +252,9 @@ func (c *AppConfig) walletService() *application.WalletService {
 
 	rm, _ := c.repoManager()
 	bcs, _ := c.bcScanner()
+	cs, _ := c.cosigner()
 	c.walletSvc = application.NewWalletService(
-		rm, bcs, c.RootPath, c.Network, c.buildInfo(),
+		rm, bcs, cs, c.RootPath, c.Network, c.buildInfo(),
 	)
 	return c.walletSvc
 }

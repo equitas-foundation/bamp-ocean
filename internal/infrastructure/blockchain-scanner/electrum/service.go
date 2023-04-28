@@ -1,14 +1,19 @@
 package electrum_scanner
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
+	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/equitas-foundation/bamp-ocean/internal/core/domain"
 	"github.com/equitas-foundation/bamp-ocean/internal/core/ports"
+	path "github.com/equitas-foundation/bamp-ocean/pkg/wallet/derivation-path"
 	log "github.com/sirupsen/logrus"
 	"github.com/vulpemventures/go-elements/confidential"
 	"github.com/vulpemventures/go-elements/elementsutil"
@@ -140,27 +145,19 @@ func (s *service) WatchForUtxos(
 }
 
 func (s *service) RestoreAccount(
-	accountIndex uint32, accountName, xpub string, masterBlindingKey []byte,
+	accountIndex uint32, accountName string,
+	xpubs []string, masterBlindingKey []byte,
 	_, addressesThreshold uint32,
 ) ([]domain.AddressInfo, []domain.AddressInfo, error) {
-	masterKey, err := hdkeychain.NewKeyFromString(xpub)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid xpub: %s", err)
+	if len(xpubs) > 1 {
+		return s.restoreMSAccount(
+			accountName, xpubs, masterBlindingKey, addressesThreshold,
+		)
 	}
 
-	masterBlindKey, err := slip77.FromMasterKey(masterBlindingKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid master blinding key: %s", err)
-	}
-
-	externalAddresses := s.restoreAddressesForAccount(
-		accountName, accountIndex, 0, masterKey, masterBlindKey, addressesThreshold,
+	return s.restoreSSAccount(
+		accountIndex, accountName, xpubs[0], masterBlindingKey, addressesThreshold,
 	)
-	internalAddresses := s.restoreAddressesForAccount(
-		accountName, accountIndex, 1, masterKey, masterBlindKey, addressesThreshold,
-	)
-
-	return externalAddresses, internalAddresses, nil
 }
 
 func (s *service) StopWatchForAccount(accountName string) {
@@ -596,7 +593,65 @@ func (s *service) setAddressesByScriptHash(
 	}
 }
 
-func (s *service) restoreAddressesForAccount(
+func (s *service) restoreSSAccount(
+	accountIndex uint32, accountName, xpub string, masterBlindingKey []byte, addressesThreshold uint32,
+) ([]domain.AddressInfo, []domain.AddressInfo, error) {
+	masterKey, err := hdkeychain.NewKeyFromString(xpub)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid xpub: %s", err)
+	}
+
+	masterBlindKey, err := slip77.FromMasterKey(masterBlindingKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid master blinding key: %s", err)
+	}
+
+	externalAddresses := s.restoreAddressesForSSAccount(
+		accountName, accountIndex, 0, masterKey, masterBlindKey, addressesThreshold,
+	)
+	internalAddresses := s.restoreAddressesForSSAccount(
+		accountName, accountIndex, 1, masterKey, masterBlindKey, addressesThreshold,
+	)
+
+	return externalAddresses, internalAddresses, nil
+}
+
+func (s *service) restoreMSAccount(
+	accountName string, xpubs []string, masterBlindingKey []byte, addressesThreshold uint32,
+) ([]domain.AddressInfo, []domain.AddressInfo, error) {
+	masterKeys := make([]*hdkeychain.ExtendedKey, 0, len(xpubs))
+	chainCodes := make([][]byte, 0, 3)
+	for _, xpub := range xpubs {
+		masterKey, err := hdkeychain.NewKeyFromString(xpub)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid xpub: %s", err)
+		}
+		chainCodes = append(chainCodes, masterKey.ChainCode())
+		masterKeys = append(masterKeys, masterKey)
+	}
+
+	blindingSeed, err := blindingKeyFromChainCode(chainCodes)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	blindNode, err := slip77.FromSeed(blindingSeed[:])
+	if err != nil {
+		return nil, nil, err
+	}
+	masterBlindKey, _ := slip77.FromMasterKey(blindNode.MasterKey)
+
+	externalAddresses := s.restoreAddressesForMSAccount(
+		accountName, 0, masterKeys, masterBlindKey, addressesThreshold,
+	)
+	internalAddresses := s.restoreAddressesForMSAccount(
+		accountName, 1, masterKeys, masterBlindKey, addressesThreshold,
+	)
+
+	return externalAddresses, internalAddresses, nil
+}
+
+func (s *service) restoreAddressesForSSAccount(
 	accountName string, accountIndex, chain uint32,
 	masterKey *hdkeychain.ExtendedKey, masterBlindKey *slip77.Slip77,
 	addressesThaddressesThreshold uint32,
@@ -658,4 +713,121 @@ func (s *service) restoreAddressesForAccount(
 	}
 
 	return restoredAddresses
+}
+
+func (s *service) restoreAddressesForMSAccount(
+	accountName string, chain uint32,
+	masterKeys []*hdkeychain.ExtendedKey, masterBlindKey *slip77.Slip77,
+	addressesThaddressesThreshold uint32,
+) []domain.AddressInfo {
+	batchSize := int(addressesThaddressesThreshold)
+	batchCounter := 0
+	unusedAddressesCounter := 0
+	restoredAddresses := make([]domain.AddressInfo, 0)
+
+	for {
+		if unusedAddressesCounter >= batchSize {
+			break
+		}
+
+		scriptHashes := make([]string, 0, batchSize)
+		addressesByScriptHash := make(map[string]domain.AddressInfo)
+
+		for i := 0; i < batchSize; i++ {
+			index := uint32(i + batchSize*batchCounter)
+			pubkeys := make([]*btcec.PublicKey, 0, len(masterKeys))
+			derivationPath := fmt.Sprintf("%d/%d", chain, index)
+
+			for _, hdNode := range masterKeys {
+				dp, _ := path.ParseDerivationPath(derivationPath)
+				for _, step := range dp {
+					hdNode, _ = hdNode.Derive(step)
+				}
+
+				pubkey, _ := hdNode.ECPubKey()
+				pubkeys = append(pubkeys, pubkey)
+			}
+			sort.SliceStable(pubkeys, func(i, j int) bool {
+				pk1 := hex.EncodeToString(pubkeys[i].SerializeCompressed())
+				pk2 := hex.EncodeToString(pubkeys[j].SerializeCompressed())
+				return pk1 < pk2
+			})
+
+			unconf, _ := payment.FromPublicKeys(pubkeys, len(pubkeys), s.net, nil)
+			blindingPrvkey, blindingPubkey, _ := masterBlindKey.DeriveKey(
+				unconf.WitnessScript,
+			)
+			p2wsh, _ := payment.FromPublicKeys(pubkeys, len(pubkeys), s.net, blindingPubkey)
+			addr, _ := p2wsh.ConfidentialWitnessScriptHash()
+			script := hex.EncodeToString(p2wsh.WitnessScript)
+			scriptHash := calcScriptHash(script)
+
+			scriptHashes = append(scriptHashes, scriptHash)
+			addressesByScriptHash[scriptHash] = domain.AddressInfo{
+				Account:        accountName,
+				Address:        addr,
+				BlindingKey:    blindingPrvkey.Serialize(),
+				DerivationPath: fmt.Sprintf("%d/%d", chain, index),
+				Script:         script,
+			}
+		}
+
+		history, _ := s.client.getScriptHashesHistory(scriptHashes)
+		if len(history) <= 0 {
+			break
+		}
+
+		for _, scriptHash := range scriptHashes {
+			if txHistory := history[scriptHash]; len(txHistory) > 0 {
+				unusedAddressesCounter = 0
+				restoredAddresses = append(
+					restoredAddresses, addressesByScriptHash[scriptHash],
+				)
+				continue
+			}
+			unusedAddressesCounter++
+		}
+
+		batchCounter++
+	}
+
+	return restoredAddresses
+}
+
+// blindingKeyFromChainCode returns sha256("blinding_key" + xor(chaincodes)) as a
+// blinding key for multisig wallet.
+// https://github.com/cryptoadvance/specter-desktop/blob/master/src/cryptoadvance/specter/liquid/wallet.py#L77-L85
+// param chainCodes the co-signers xpubs chainCodes (from the first receiving address)
+func blindingKeyFromChainCode(chainCodes [][]byte) ([32]byte, error) {
+	prefix := []byte("blinding_key")
+	chainCodesXOR := []byte{
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+	for _, v := range chainCodes {
+		tmp, err := xor(chainCodesXOR, v)
+		if err != nil {
+			return [32]byte{}, err
+		}
+		chainCodesXOR = tmp
+	}
+
+	bk := append(prefix, chainCodesXOR...)
+
+	return sha256.Sum256(bk), nil
+}
+
+func xor(a []byte, b []byte) ([]byte, error) {
+	result := make([]byte, len(a))
+
+	if len(a) != len(b) {
+		return nil, errors.New("len(a) != len(b)")
+	}
+
+	for i := 0; i < len(a); i++ {
+		result[i] = a[i] ^ b[i]
+	}
+
+	return result, nil
 }

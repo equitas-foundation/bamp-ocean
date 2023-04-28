@@ -68,7 +68,7 @@ func testInitWalletFromScratch(t *testing.T) {
 		require.NotNil(t, repoManager)
 
 		svc := application.NewWalletService(
-			repoManager, mockedBcScanner, rootPath, regtest, buildInfo,
+			repoManager, mockedBcScanner, nil, rootPath, regtest, buildInfo,
 		)
 
 		status := svc.GetStatus(ctx)
@@ -132,7 +132,7 @@ func testInitWalletFromRestart(t *testing.T) {
 		require.NotNil(t, repoManager)
 
 		svc := application.NewWalletService(
-			repoManager, mockedBcScanner, rootPath, regtest, buildInfo,
+			repoManager, mockedBcScanner, nil, rootPath, regtest, buildInfo,
 		)
 
 		status := svc.GetStatus(ctx)
