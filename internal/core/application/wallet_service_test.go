@@ -250,7 +250,8 @@ func newRepoManagerForExistingWallet() (ports.RepoManager, error) {
 		},
 	}
 	wallet, err := domain.NewWallet(
-		mnemonic, password, rootPath, msRootPath, regtest.Name, birthdayBlockHeight, accounts,
+		mnemonic, password, rootPath, msRootPath, regtest.Name,
+		birthdayBlockHeight, accounts, nil,
 	)
 	if err != nil {
 		return nil, err

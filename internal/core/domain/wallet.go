@@ -80,7 +80,7 @@ func GetAccountNamespace(rootPath string, index uint32) string {
 // in plain text.
 func NewWallet(
 	mnemonic []string, password, rootPath, msRootPath, network string,
-	birthdayBlock uint32, accounts []Account,
+	birthdayBlock uint32, ssAccounts, msAccounts []Account,
 ) (*Wallet, error) {
 	if len(mnemonic) <= 0 {
 		return nil, ErrWalletMissingMnemonic
@@ -115,9 +115,13 @@ func NewWallet(
 
 	accountsByNamespace := make(map[string]*Account)
 	accountsByLabel := make(map[string]string)
-	sort.SliceStable(accounts, func(i, j int) bool {
-		return accounts[i].AccountInfo.DerivationPath > accounts[j].AccountInfo.DerivationPath
+	sort.SliceStable(ssAccounts, func(i, j int) bool {
+		return ssAccounts[i].AccountInfo.DerivationPath > ssAccounts[j].AccountInfo.DerivationPath
 	})
+	sort.SliceStable(msAccounts, func(i, j int) bool {
+		return msAccounts[i].AccountInfo.DerivationPath > msAccounts[j].AccountInfo.DerivationPath
+	})
+	accounts := append(ssAccounts, msAccounts...)
 	for i := range accounts {
 		account := accounts[i]
 		accountsByNamespace[account.Namespace] = &account
@@ -125,10 +129,14 @@ func NewWallet(
 			accountsByLabel[account.Label] = account.Namespace
 		}
 	}
-	var nextAccountIndex uint32
-	if len(accounts) > 0 {
-		p, _ := path.ParseDerivationPath(accounts[0].AccountInfo.DerivationPath)
+	var nextAccountIndex, nextMSAccountIndex uint32
+	if len(ssAccounts) > 0 {
+		p, _ := path.ParseDerivationPath(ssAccounts[0].AccountInfo.DerivationPath)
 		nextAccountIndex = p[len(p)-1] - hdkeychain.HardenedKeyStart + 1
+	}
+	if len(msAccounts) > 0 {
+		p, _ := path.ParseDerivationPath(msAccounts[0].AccountInfo.DerivationPath)
+		nextMSAccountIndex = p[len(p)-2] - hdkeychain.HardenedKeyStart + 1
 	}
 
 	return &Wallet{
@@ -141,6 +149,7 @@ func NewWallet(
 		AccountsByLabel:     accountsByLabel,
 		NetworkName:         network,
 		NextAccountIndex:    nextAccountIndex,
+		NextMSAccountIndex:  nextMSAccountIndex,
 	}, nil
 }
 

@@ -111,7 +111,7 @@ func (ws *WalletService) CreateWallet(
 
 	newWallet, err := domain.NewWallet(
 		mnemonic, passphrase, ws.rootPath, ws.msRootPath, ws.network.Name,
-		birthdayBlockHeight, nil,
+		birthdayBlockHeight, nil, nil,
 	)
 	if err != nil {
 		return
@@ -231,7 +231,6 @@ func (ws *WalletService) RestoreWallet(
 		return
 	}
 
-	accounts := append(ssAccounts, msAccounts...)
 	addressesByAccount := ssAddressesByAccount
 	for k, v := range msAddressesByAccount {
 		addressesByAccount[k] = v
@@ -249,7 +248,7 @@ func (ws *WalletService) RestoreWallet(
 
 	newWallet, err := domain.NewWallet(
 		mnemonic, passpharse, walletRootPath, ws.msRootPath, ws.network.Name,
-		birthdayBlockHeight, accounts,
+		birthdayBlockHeight, ssAccounts, msAccounts,
 	)
 	if err != nil {
 		sendMessage(canceled, chMessages, WalletRestoreMessage{Err: err})

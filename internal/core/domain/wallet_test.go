@@ -99,7 +99,7 @@ func TestNewWallet(t *testing.T) {
 
 		for _, tt := range tests {
 			v, err := domain.NewWallet(
-				tt.mnemonic, tt.password, "", "", tt.network, tt.birthdayBlock, nil,
+				tt.mnemonic, tt.password, "", "", tt.network, tt.birthdayBlock, nil, nil,
 			)
 			require.Nil(t, v)
 			require.EqualError(t, err, tt.expectedError.Error())
@@ -330,7 +330,7 @@ func TestWalletMSAccount(t *testing.T) {
 
 func newTestWallet() (*domain.Wallet, error) {
 	return domain.NewWallet(
-		mnemonic, password, rootPath, msRootPath, regtest, birthdayBlock, nil,
+		mnemonic, password, rootPath, msRootPath, regtest, birthdayBlock, nil, nil,
 	)
 }
 

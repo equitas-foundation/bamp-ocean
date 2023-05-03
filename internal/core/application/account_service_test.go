@@ -84,7 +84,8 @@ func newRepoManagerForAccountService() (ports.RepoManager, error) {
 	}
 
 	wallet, err := domain.NewWallet(
-		mnemonic, password, rootPath, msRootPath, regtest.Name, birthdayBlockHeight, nil,
+		mnemonic, password, rootPath, msRootPath, regtest.Name,
+		birthdayBlockHeight, nil, nil,
 	)
 	if err != nil {
 		return nil, err

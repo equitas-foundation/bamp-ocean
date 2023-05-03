@@ -96,7 +96,7 @@ func testManageWallet(t *testing.T, repo domain.WalletRepository) {
 		require.Nil(t, wallet)
 
 		w, _ := domain.NewWallet(
-			mnemonic, password, rootPath, msRootPath, regtest, birthdayBlock, nil,
+			mnemonic, password, rootPath, msRootPath, regtest, birthdayBlock, nil, nil,
 		)
 		err = repo.CreateWallet(ctx, w)
 		require.NoError(t, err)
