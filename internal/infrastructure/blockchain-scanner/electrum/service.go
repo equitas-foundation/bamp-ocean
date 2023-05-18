@@ -240,7 +240,7 @@ func (s *service) GetUtxosForAddresses(
 		for i, out := range tx.Outputs {
 			if len(out.Script) > 0 {
 				scriptHash := calcScriptHash(hex.EncodeToString(out.Script))
-				if _, ok := addressesByScriptHash[scriptHash]; ok {
+				if addr, ok := addressesByScriptHash[scriptHash]; ok {
 					var value uint64
 					var asset string
 					var nonce, valueCommit, assetCommit []byte
@@ -263,6 +263,7 @@ func (s *service) GetUtxosForAddresses(
 						Nonce:           nonce,
 						RangeProof:      out.RangeProof,
 						SurjectionProof: out.SurjectionProof,
+						RedeemScript:    addr.RedeemScript,
 					})
 				}
 			}
@@ -769,6 +770,7 @@ func (s *service) restoreAddressesForMSAccount(
 				BlindingKey:    blindingPrvkey.Serialize(),
 				DerivationPath: fmt.Sprintf("%d/%d", chain, index),
 				Script:         script,
+				RedeemScript:   p2wsh.Redeem.Script,
 			}
 		}
 
