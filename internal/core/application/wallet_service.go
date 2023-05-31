@@ -231,10 +231,6 @@ func (ws *WalletService) RestoreWallet(
 		return
 	}
 
-	addressesByAccount := ssAddressesByAccount
-	for k, v := range msAddressesByAccount {
-		addressesByAccount[k] = v
-	}
 	accountByScript := ssAccountByScript
 	for k, v := range msAccountByScript {
 		accountByScript[k] = v
@@ -281,7 +277,10 @@ func (ws *WalletService) RestoreWallet(
 	}
 
 	addresses := make([]domain.AddressInfo, 0)
-	for _, accountAddresses := range addressesByAccount {
+	for _, accountAddresses := range ssAddressesByAccount {
+		addresses = append(addresses, accountAddresses...)
+	}
+	for _, accountAddresses := range msAddressesByAccount {
 		addresses = append(addresses, accountAddresses...)
 	}
 	utxos, err := ws.bcScanner.GetUtxosForAddresses(addresses)
@@ -514,13 +513,6 @@ func (ws *WalletService) restoreSingleSigAccounts(
 		}
 		ws.log(msg)
 
-		addressesByAccount[accountIndex] = append(
-			addressesByAccount[accountIndex], externalAddresses...,
-		)
-		addressesByAccount[accountIndex] = append(
-			addressesByAccount[accountIndex], internalAddresses...,
-		)
-
 		// sort addresses by derivation path (desc order) to facilitate retrieving
 		// the last derived index.
 		sort.SliceStable(externalAddresses, func(i, j int) bool {
@@ -553,6 +545,13 @@ func (ws *WalletService) restoreSingleSigAccounts(
 			p, _ := path.ParseDerivationPath(internalAddresses[0].DerivationPath)
 			nextInternalIndex = uint(p[len(p)-1] + 1)
 		}
+
+		addressesByAccount[accountIndex] = append(
+			addressesByAccount[accountIndex], externalAddresses...,
+		)
+		addressesByAccount[accountIndex] = append(
+			addressesByAccount[accountIndex], internalAddresses...,
+		)
 
 		accounts = append(accounts, domain.Account{
 			AccountInfo: domain.AccountInfo{
@@ -675,13 +674,6 @@ func (ws *WalletService) restoreMultiSigAccounts(
 		}
 		ws.log(msg)
 
-		addressesByAccount[accountIndex] = append(
-			addressesByAccount[accountIndex], externalAddresses...,
-		)
-		addressesByAccount[accountIndex] = append(
-			addressesByAccount[accountIndex], internalAddresses...,
-		)
-
 		// sort addresses by derivation path (desc order) to facilitate retrieving
 		// the last derived index.
 		sort.SliceStable(externalAddresses, func(i, j int) bool {
@@ -714,6 +706,13 @@ func (ws *WalletService) restoreMultiSigAccounts(
 			p, _ := path.ParseDerivationPath(internalAddresses[0].DerivationPath)
 			nextInternalIndex = uint(p[len(p)-1] + 1)
 		}
+
+		addressesByAccount[accountIndex] = append(
+			addressesByAccount[accountIndex], externalAddresses...,
+		)
+		addressesByAccount[accountIndex] = append(
+			addressesByAccount[accountIndex], internalAddresses...,
+		)
 
 		accounts = append(accounts, domain.Account{
 			AccountInfo: domain.AccountInfo{
